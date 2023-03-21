@@ -778,8 +778,15 @@ try:
     import psutil
     NCPU = psutil.cpu_count(logical=False)
 except:
-    import multiprocessing
-    NCPU = multiprocessing.cpu_count()
+    try:
+        r = {}
+        for line in open('/proc/cpuinfo', 'r'):
+            if line.startswith('core id'):
+                r[line]=1
+        NCPU = sum(r.values())
+    except:
+        import multiprocessing
+        NCPU = multiprocessing.cpu_count()
 #NCPU = 4
 
 

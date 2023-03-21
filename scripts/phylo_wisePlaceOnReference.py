@@ -5,7 +5,7 @@ from querier3.wise2 import *
 from argparse import ArgumentParser
 import os, os.path, sys, subprocess, shutil, json, math
 from ete3 import *
-
+from querier3.utils import NCPU
 if not 'WISECONFIGDIR' in os.environ:
     os.environ["WISECONFIGDIR"]="/home/gkoczyk/miniconda2/envs/phyloplace/share/wise2/wisecfg/"
 argparser = ArgumentParser("Automated phylogenetic placement of short DNA sequences (amplicons/reads) on a reference protein phylogeny using WISE2 estimated protein fragments")
@@ -51,20 +51,20 @@ def readDiamondTsv(fh):
         yield StructObject(query=fields[0], hit=fields[1], percid=float(fields[2]), evalue=float(fields[3]), bitscore=float(fields[4]), qframe=int(fields[5]), stitle=fields[6].strip())
 
 GENEWISEDB_CMD='genewisedb -init local -pfam {hmm_fn} -dnadb {query_fn} -quiet -block 200 -genes -aln {max_size} -kbyte {max_mem} -pthr_no {ncpu} -pthread -cut 10. > {out_fn}'
-def runGenewiseDb(query_fn, hmm_fn, out_fn, max_size=10000000, max_mem=10000000, ncpu=4):
+def runGenewiseDb(query_fn, hmm_fn, out_fn, max_size=10000000, max_mem=10000000, ncpu=NCPU):
     genewisedb_cmdstr = GENEWISEDB_CMD.format(query_fn=query_fn, hmm_fn=hmm_fn, out_fn=out_fn, max_size=max_size, max_mem=max_mem, ncpu=ncpu)
     #print(diamond_cmdstr)
     #sys.exit(0)
     return subprocess.run(genewisedb_cmdstr, shell=True)
 
 GENEWISEDBPROT_CMD='genewisedb -init local -prodb {protdb_fn} -dnadb {query_fn} -quiet -block 200 -genes -aln {max_size} -kbyte {max_mem} -cut 10. > {out_fn}'
-def runGenewiseDbUsingProts(query_fn, protdb_fn, out_fn, max_size=10000000, max_mem=10000000, ncpu=4):
+def runGenewiseDbUsingProts(query_fn, protdb_fn, out_fn, max_size=10000000, max_mem=10000000, ncpu=NCPU):
     genewisedb_cmdstr = GENEWISEDBPROT_CMD.format(query_fn=query_fn, protdb_fn=protdb_fn, out_fn=out_fn, max_size=max_size, max_mem=max_mem, ncpu=ncpu)
     #print(genewisedb_cmdstr)
     #sys.exit(0)
     return subprocess.run(genewisedb_cmdstr, shell=True)
 
-def runGenewiseDbForSeqs(seqs, hmm_fn, out_fn, max_size=10000000, max_mem=10000000, ncpu=4):
+def runGenewiseDbForSeqs(seqs, hmm_fn, out_fn, max_size=10000000, max_mem=10000000, ncpu=NCPU):
     hmm_fn = os.path.abspath(hmm_fn)
     out_fn = os.path.abspath(out_fn)
     with tempDir(change_dir=True) as dirn:
@@ -72,10 +72,10 @@ def runGenewiseDbForSeqs(seqs, hmm_fn, out_fn, max_size=10000000, max_mem=100000
         with open(tmp_query_fn, 'w') as wfh:
             for seq_id in seqs:
                 print(">%s\n%s" % (seq_id, seqs[seq_id]), file=wfh)
-        r = runGenewiseDb(tmp_query_fn, hmm_fn, out_fn, max_size=max_size, max_mem=max_mem, ncpu=4)
+        r = runGenewiseDb(tmp_query_fn, hmm_fn, out_fn, max_size=max_size, max_mem=max_mem, ncpu=NCPU)
     return r
 
-def runGenewiseDbForSeqsUsingProts(seqs, protdb_fn, out_fn, diamondr=None, max_size=10000000, max_mem=10000000, ncpu=4):
+def runGenewiseDbForSeqsUsingProts(seqs, protdb_fn, out_fn, diamondr=None, max_size=10000000, max_mem=10000000, ncpu=NCPU):
     protdb_fn = os.path.abspath(protdb_fn)
     out_fn = os.path.abspath(out_fn)
     with tempDir(change_dir=True) as dirn:
@@ -94,10 +94,10 @@ def runGenewiseDbForSeqsUsingProts(seqs, protdb_fn, out_fn, diamondr=None, max_s
                     if prot.id in dbids:
                         print(">%s\n%s" % (prot.id, str(prot.seq)), file=wfh)
             #print(open(tmp_query_fn, 'r').read(), "\n", open(tmpdb_fn, 'r').read())
-            r = runGenewiseDbUsingProts(tmp_query_fn, tmpdb_fn, out_fn, max_size=max_size, max_mem=max_mem, ncpu=4)
+            r = runGenewiseDbUsingProts(tmp_query_fn, tmpdb_fn, out_fn, max_size=max_size, max_mem=max_mem, ncpu=NCPU)
             #print("DONE")
         else:
-            r = runGenewiseDbUsingProts(tmp_query_fn, protdb_fn, out_fn, max_size=max_size, max_mem=max_mem, ncpu=4)
+            r = runGenewiseDbUsingProts(tmp_query_fn, protdb_fn, out_fn, max_size=max_size, max_mem=max_mem, ncpu=NCPU)
     return r
 
 #genewisedb_cmdstr = GENEWISEDB_CMD.format(query_fn=query_fn, hmm_fn=hmm_fn, out_fn=out_fn, max_size=max_size, max_mem=max_mem, ncpu=ncpu)
@@ -123,7 +123,7 @@ def parseJplace(fh):
 # TODO: encapsulate proper MAFFT alignment
 #MAFFT_CMD= 'mafft --thread {ncpu} --addfragments {input_fn} --keeplength {orig_ali_fn} > {output_fn}'
 MAFFT_CMD= 'mafft --6merpair --thread {ncpu} --addfragments {input_fn} --keeplength {orig_ali_fn} > {output_fn} 2>/dev/null'
-def runMafft(input_fn, orig_ali_fn, out_fn, seqids, ncpu=4):
+def runMafft(input_fn, orig_ali_fn, out_fn, seqids, ncpu=NCPU):
     with tmpfile(give_name=True) as (tmp_fh, tmp_fn):
         mafft_cmdstr = MAFFT_CMD.format(input_fn=input_fn, orig_ali_fn=orig_ali_fn, output_fn=tmp_fn, ncpu=ncpu)
         #print(mafft_cmdstr)
@@ -211,18 +211,31 @@ if __name__=='__main__':
     # This one is by default - if we want another we have to rewrite runEpaNg to move files around
     final_epa_jplace_fn = os.path.join(args.out_dirn, 'epa_result.jplace')    
     final_epa_newick_fn = os.path.join(args.out_dirn, 'epa_result.newick')
+
+    # Quick census to rename anything which happens to overlap with tree
+    tree_names = set( node.name for node in PhyloTree(args.ref_prot_tree_fn))
+    renamed = {}
     # Everything runs in a temporary dir
     with tempDir(change_dir=True) as tmp_dirn:
-        # Quickly curate input to avoid quotes which mess up JavaScript
+        # Quickly curate input to avoid quotes/parentheses which mess up JavaScript
         tmp_query_fn = 'query.fasta'
         all_counts = {}
+        seen = set()
         with open(tmp_query_fn, 'w') as wfh:
+            renamed_count = 0
             for seq in SeqIO.parse(args.query_fn, 'fasta'):
                 if 'count=' in seq.description:
                     count = int(seq.description.split('count=')[-1].strip())
                 else:
                     count = 1
-                new_seqid =seq.id.replace("'",'').replace('"','')
+                cand_seqid = seq.id.replace("'",'').replace('"','').replace('[','').replace(']','').replace(':', '___')
+                if cand_seqid in tree_names or cand_seqid in seen:
+                    renamed_count+=1
+                    new_seqid = cand_seqid + '__renamed%04d' % renamed_count
+                else:
+                    new_seqid = cand_seqid
+                renamed[new_seqid] = seq.id
+                seen.add(new_seqid)
                 all_counts[new_seqid]=count
                 print(">"+new_seqid, file=wfh)
                 print(str(seq.seq),file=wfh)
@@ -375,7 +388,7 @@ if __name__=='__main__':
             # - DIAMOND fardb (default Sprot) results
 
             with open(summary_fn, 'w') as out_fh:
-                fnames = ['amplicon_id', 'count', 'length', 'labels', 'weights', 'diamond_hit_id', 'diamond_evalue', 'diamond_idperc', 'fardb_hit_id', 'fardb_evalue', 'fardb_percid', 'fardb_description' ]
+                fnames = ['amplicon_id', 'count', 'length', 'labels', 'weights', 'diamond_hit_id', 'diamond_evalue', 'diamond_idperc', 'fardb_hit_id', 'fardb_evalue', 'fardb_percid', 'fardb_description', 'orig_amplicon_id' ]
                 jplace_r = { v.seqid:v for v in parseJplace(final_epa_jplace_fn) }
                 print(*fnames, sep='\t', file=out_fh)
                 #print(filt_seqids)
@@ -417,13 +430,15 @@ if __name__=='__main__':
 
                             drec = diamond_recs[seqid]
                             frec = fardb_recs.get(seqid,None) or StructObject(hit=None, evalue=None, percid=None, stitle=None)
-                            fields = [ seqid, all_counts[seqid], all_seqids[seqid], labels, weights, drec.hit, drec.evalue, "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
+                            fields = [ seqid, all_counts[seqid], all_seqids[seqid], labels, weights, drec.hit, drec.evalue, "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None,
+                                       frec.stitle, renamed[seqid] ]
                         else:
                             try:
                                 drec = diamond_recs[seqid]
-                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  drec.hit, drec.evalue, "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
+                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  drec.hit, drec.evalue, "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None,
+                                          frec.stitle, renamed[seqid] ]
                             except:
-                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
+                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle, renamed[seqid] ]
                     else:
                         frec = fardb_recs.get(seqid,None) or StructObject(hit=None, evalue=None, percid=None, stitle=None)
                         fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER', '*', None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
