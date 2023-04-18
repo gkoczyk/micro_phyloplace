@@ -18,12 +18,14 @@ argparser.add_argument('ref_hmm_fn', help='Reference HMMer v2 model correspondin
 argparser.add_argument('--annots_fn', help='Name of annotations TSV file for visualization  [DEFAULT: %(default)s]', type=os.path.abspath, default="/data/reference.annots.tsv")
 argparser.add_argument('--clades_fn', help='Name of clade TSV file for classification  [DEFAULT: %(default)s]', type=os.path.abspath, default="/data/clades.tsv")
 argparser.add_argument('--far_dmnd_fn', help='Name of diamond database for further classification of (mainly) outliers [DEFAULT: %(default)s]', type=os.path.abspath, default="/data/uniprot_sprot.dmnd")
+argparser.add_argument('--protein', help='Query is protein (default: DNA sequence)', default=False, action='store_true')
 
 
 
 #DIAMOND_EXEC='diamond'
 MAX_DIAMOND_EVALUE='1e-10'
-DIAMOND_CMD='diamond blastx -q {query_fn} -d {db_fn} -f 6 qseqid sseqid pident evalue bitscore qframe stitle -k 1 -e {evalue} -o {out_fn} --quiet' #>/dev/null 2>/dev/null '
+DIAMOND_BLASTX_CMD='diamond blastx -q {query_fn} -d {db_fn} -f 6 qseqid sseqid pident evalue bitscore qframe stitle -k 1 -e {evalue} -o {out_fn} --quiet' #>/dev/null 2>/dev/null '
+DIAMOND_BLASTP_CMD = 'diamond blastp -q {query_fn} -d {db_fn} -f 6 qseqid sseqid pident evalue bitscore qframe stitle -k 1 -e {evalue} -o {out_fn} --quiet' #>/dev/null 2>/dev/null '
 DIAMOND_MAKEDB_CMD='diamond makedb --in {input_fn} -d {db_fn} --quiet >/dev/null 2>/dev/null '
 ISOFORM_SEP="####"
 def degap(s):
@@ -39,8 +41,11 @@ def makeDiamondDb(ali_fn, out_db_fn):
         #print(diamond_makedb_cmdstr)
         #input('WAIT')
 
-def runDiamond(query_fn, db_fn, out_fn, evalue):
-    diamond_cmdstr = DIAMOND_CMD.format(query_fn=query_fn, db_fn=db_fn, evalue=evalue, out_fn=out_fn)
+def runDiamond(query_fn, db_fn, out_fn, evalue, is_protein=False):
+    if is_protein:
+        diamond_cmdstr = DIAMOND_BLASTP_CMD.format(query_fn=query_fn, db_fn=db_fn, evalue=evalue, out_fn=out_fn)
+    else:
+        diamond_cmdstr = DIAMOND_BLASTX_CMD.format(query_fn=query_fn, db_fn=db_fn, evalue=evalue, out_fn=out_fn)
     #print(diamond_cmdstr)
     #sys.exit(0)
     return subprocess.run(diamond_cmdstr, shell=True)
@@ -244,12 +249,12 @@ if __name__=='__main__':
         args.query_fn = tmp_query_fn
         # 1) Run diamond
         if str(args.far_dmnd_fn)!='None':
-            runDiamond(args.query_fn, args.far_dmnd_fn, final_far_diamond_fn, evalue=1e-4)
+            runDiamond(args.query_fn, args.far_dmnd_fn, final_far_diamond_fn, evalue=1e-4, is_protein=args.protein)
             fardb_recs = { rec.query:rec for rec in readDiamondTsv(final_far_diamond_fn) }
         else:
             fardb_recs = {}
 
-        runDiamond(args.query_fn,  dmnd_ref_prot_fn, final_diamond_fn, evalue=MAX_DIAMOND_EVALUE)
+        runDiamond(args.query_fn,  dmnd_ref_prot_fn, final_diamond_fn, evalue=MAX_DIAMOND_EVALUE, is_protein=args.protein)
         #shutil.copy(diamond_fn, final_diamond_fn)
         # 2) Filter results of DIAMOND, output summary message about rejections
         diamond_recs = { rec.query:rec for rec in readDiamondTsv(final_diamond_fn) }
@@ -259,7 +264,6 @@ if __name__=='__main__':
             print('WARNING: no matches to reference database, check input', file=sys.stderr)
         else:
             all_seqids = {}
-
             # 3) Run alignment, with cut insertions, remember to quash standard output, translate
             with open(filt_query_fn, 'w') as wfh:
                 for seq in SeqIO.parse(args.query_fn, 'fasta'):
@@ -271,41 +275,44 @@ if __name__=='__main__':
                         #    print(str(seq.reverse_complement().seq),file=wfh)
                         #else:
                         print(str(seq.seq), file=wfh)
-            runGenewiseDb(filt_query_fn, args.ref_hmm_fn, final_wise_fn)
-            # CURRENT: Sum of exons is taken into account (hence readGenewiseStructsForSingle) ALTERNATIVE_TO_DO:Only first predicted gene/fragment is taken into account
-            genewise = { rec.seqid:rec for rec in readWiseGeneStructsForSingle(final_wise_fn) }
+            if not args.protein:
+                runGenewiseDb(filt_query_fn, args.ref_hmm_fn, final_wise_fn)
+                # CURRENT: Sum of exons is taken into account (hence readGenewiseStructsForSingle) ALTERNATIVE_TO_DO:Only first predicted gene/fragment is taken into account
+                genewise = { rec.seqid:rec for rec in readWiseGeneStructsForSingle(final_wise_fn) }
 
-            # For the ones that were identified by DIAMOND but seemingly have no match, rerun one by one against raw proteins (F. equiseti bug)
-            counter = 0           
-            for seq in SeqIO.parse(filt_query_fn, 'fasta'):
-                if seq.id not in genewise:
-                    counter+=1
-                    addit_wise_fn = final_wise_fn + '.%00d' % counter
-                    runGenewiseDbForSeqsUsingProts( { seq.id: str(seq.seq) }, args.ref_prot_raw_fn, addit_wise_fn, diamondr=diamond_recs )
-                    gw = { rec.seqid:rec for rec in readWiseGeneStructsForSingle(addit_wise_fn) }
-                    if seq.id in gw:
-                        genewise[seq.id] = gw[seq.id]
-                            
-            wise2filt = {rec.seqid:rec.seqid.split(WISE2_MULTIGENE_SEP,1)[0] for rec in genewise.values()}
-            filt2wise = defaultdict(list)
-            for k in wise2filt:
-                filt2wise[wise2filt[k]].append(k)
-            
-            with open(final_query_translated_fn, 'w') as wfh:
+                # For the ones that were identified by DIAMOND but seemingly have no match, rerun one by one against raw proteins (F. equiseti bug)
+                counter = 0           
                 for seq in SeqIO.parse(filt_query_fn, 'fasta'):
-                    for seq_id in list(filt2wise[seq.id]):
-                        if seq_id!=seq.id:
-                            print(seq_id, seq.id, "PROBLEM", file=sys.stderr)
-                            all_seqids[seq_id]=len(seq)
-                            filt_seqids.add(seq_id)
-                        try:
-                            translated = translateExons(seq, genewise[seq_id].exons)
-                            print(">%s" % seq_id, file=wfh)                            
-                            print(translated,file=wfh)
-                        except:
-                            print(seq_id, genewise[seq_id], file=sys.stderr)
-                            #filt_seqids.remove(seq_id)
-                            pass
+                    if seq.id not in genewise:
+                        counter+=1
+                        addit_wise_fn = final_wise_fn + '.%00d' % counter
+                        runGenewiseDbForSeqsUsingProts( { seq.id: str(seq.seq) }, args.ref_prot_raw_fn, addit_wise_fn, diamondr=diamond_recs )
+                        gw = { rec.seqid:rec for rec in readWiseGeneStructsForSingle(addit_wise_fn) }
+                        if seq.id in gw:
+                            genewise[seq.id] = gw[seq.id]
+
+                wise2filt = {rec.seqid:rec.seqid.split(WISE2_MULTIGENE_SEP,1)[0] for rec in genewise.values()}
+                filt2wise = defaultdict(list)
+                for k in wise2filt:
+                    filt2wise[wise2filt[k]].append(k)
+
+                with open(final_query_translated_fn, 'w') as wfh:
+                    for seq in SeqIO.parse(filt_query_fn, 'fasta'):
+                        for seq_id in list(filt2wise[seq.id]):
+                            if seq_id!=seq.id:
+                                print(seq_id, seq.id, "PROBLEM", file=sys.stderr)
+                                all_seqids[seq_id]=len(seq)
+                                filt_seqids.add(seq_id)
+                            try:
+                                translated = translateExons(seq, genewise[seq_id].exons)
+                                print(">%s" % seq_id, file=wfh)                            
+                                print(translated,file=wfh)
+                            except:
+                                print(seq_id, genewise[seq_id], file=sys.stderr)
+                                #filt_seqids.remove(seq_id)
+                                pass
+            else:
+                shutil.copy(filt_query_fn, final_query_translated_fn)
             # Rerun if any of the filtered seqids are missing from results
             
             runMafft(final_query_translated_fn, args.ref_prot_ali_fn, final_query_prot_ali_fn, seqids=filt_seqids)
@@ -322,30 +329,6 @@ if __name__=='__main__':
 
             result_tree = PhyloTree(final_epa_newick_fn)
             ref_tree = PhyloTree(args.ref_prot_tree_fn)
-            # This is not kept
-            # # Run an additional check of final_epa_newick_fn to adjust branch lengths
-            # result_tree = PhyloTree(final_epa_newick_fn)
-            # ref_tree = PhyloTree(args.ref_prot_tree_fn)
-            # to_change = set()
-            # for node in ref_tree.traverse():
-            #     if node.dist==0. and not node is ref_tree:
-            #         #try:
-            #         #    counterpart = result_tree&result_tree.get_common_ancestor([result_tree&leaf.name for leaf in node])
-            #         #except:
-            #         #    print([ leaf.name for leaf in node ])
-            #         #    raise
-            #         to_change.add(frozenset(leaf.name for leaf in node))
-            #         #counterpart.dist=0.
-            #         #print(counterpart.dist)
-            #         #print(counterpart.up.dist)
-            #         #print("SET for", [leaf.name for leaf in node])
-            # for node in result_tree.traverse(strategy='postorder'):
-            #     leaves = frozenset(leaf.name for leaf in node if leaf.name not in filt_seqids)
-            #     if leaves in to_change:
-            #         node.dist=0.
-            #         to_change.remove(leaves)
-            #     if len(to_change)==0:
-            #         break
             with open(final_epa_newick_fn, 'w') as wfh:
                 print(result_tree.write(format=0), file=wfh)
 
