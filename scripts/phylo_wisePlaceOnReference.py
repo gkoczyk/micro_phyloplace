@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-from Bio import SeqIO
+from Bio import SeqIO, SearchIO
 from querier3.utils import *
 from querier3.wise2 import *
 from argparse import ArgumentParser
@@ -123,7 +123,26 @@ def parseJplace(fh):
         for p in ps:
             v.placements.append(StructObject(**dict(zip(fnames, p))))
         yield v
-    
+
+#############################
+## HMMSEARCH run/table parse
+HMMSEARCH_CMD = 'hmmsearch --cpu {ncpu} --domtblout {output_fn} {hmm_fn} {input_fn} > /dev/null'
+def runHmmsearch(input_fn, hmm_fn, output_fn, ncpu=NCPU):
+    hmmsearch_cmdstr = HMMSEARCH_CMD.format(ncpu=NCPU, input_fn=input_fn, hmm_fn=hmm_fn, output_fn=output_fn)
+    return subprocess.run(hmmsearch_cmdstr, shell=True)
+
+@handlify(mode='rt')
+# By default one domain for each
+def parseDomHmmsearchToCoords(fh):
+    r = []
+    for hit in SearchIO.read(fh, 'hmmsearch3-domtab'):
+        #print(hit.id)
+        prev = None
+        env_start = hit.hsps[0].env_start+1
+        env_end = hit.hsps[-1].env_end
+        r.append( StructObject(seqid=hit.id, xstart=env_start, xend=env_end) )
+    return r
+
 #############################
 # TODO: encapsulate proper MAFFT alignment
 #MAFFT_CMD= 'mafft --thread {ncpu} --addfragments {input_fn} --keeplength {orig_ali_fn} > {output_fn}'
@@ -312,7 +331,17 @@ if __name__=='__main__':
                                 #filt_seqids.remove(seq_id)
                                 pass
             else:
-                shutil.copy(filt_query_fn, final_query_translated_fn)
+                # TODO: in case of protein, you need to run HMMer...
+                tmp_dom_fn = "tmp_dom.txt"
+                runHmmsearch(filt_query_fn, args.ref_hmm_fn, tmp_dom_fn)
+                with open(final_query_translated_fn, 'w') as wfh:
+                    domdikt = { dom.seqid:dom for dom in parseDomHmmsearchToCoords(tmp_dom_fn) }
+                    for seq in SeqIO.parse(filt_query_fn, 'fasta'):
+                        if seq.id in domdikt:
+                            dom = domdikt[seq.id]
+                            print(">%s" % seq.id, file=wfh)                            
+                            print(str(seq.seq)[dom.xstart-1:dom.xend],file=wfh)   
+                #shutil.copy(filt_query_fn, final_query_translated_fn)
             # Rerun if any of the filtered seqids are missing from results
             
             runMafft(final_query_translated_fn, args.ref_prot_ali_fn, final_query_prot_ali_fn, seqids=filt_seqids)
