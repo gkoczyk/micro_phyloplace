@@ -390,7 +390,14 @@ if __name__=='__main__':
                         if guard:
                             label_parents[label1].add(label2)
 
-
+            # Last walk to find most specific clade for each reference
+            ref_labels = {}
+            for leaf in ref_tree:
+                v = [ label for label in leaf.labels ]
+                parents = set(flatten(*[label_parents[l] for l in v]))
+                v_nr = [ l for l in v if l not in parents ]
+                ref_labels[leaf.name] =  v_nr[0] if v_nr else 'OTHER'
+            #print(len(ref_labels), len(ancestor_ref
             ## Output the final placements                        
             # 
             # - amplicon name (include ####2,3 etc if there are multiple genes annotated)
@@ -400,7 +407,8 @@ if __name__=='__main__':
             # - DIAMOND fardb (default Sprot) results
 
             with open(summary_fn, 'w') as out_fh:
-                fnames = ['amplicon_id', 'count', 'length', 'labels', 'weights', 'diamond_hit_id', 'diamond_evalue', 'diamond_idperc', 'fardb_hit_id', 'fardb_evalue', 'fardb_percid', 'fardb_description', 'orig_amplicon_id' ]
+                fnames = ['amplicon_id', 'count', 'length', 'labels', 'weights', 'diamond_hit_id', 'diamond_evalue', 'diamond_idperc', 'diamond_label',
+                          'fardb_hit_id', 'fardb_evalue', 'fardb_percid', 'fardb_description', 'orig_amplicon_id' ]
                 jplace_r = { v.seqid:v for v in parseJplace(final_epa_jplace_fn) }
                 print(*fnames, sep='\t', file=out_fh)
                 #print(filt_seqids)
@@ -442,18 +450,19 @@ if __name__=='__main__':
 
                             drec = diamond_recs[seqid]
                             frec = fardb_recs.get(seqid,None) or StructObject(hit=None, evalue=None, percid=None, stitle=None)
-                            fields = [ seqid, all_counts[seqid], all_seqids[seqid], labels, weights, drec.hit, drec.evalue, "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None,
+                            fields = [ seqid, all_counts[seqid], all_seqids[seqid], labels, weights, drec.hit, drec.evalue, "%.2f" % drec.percid, ref_labels[drec.hit], frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None,
                                        frec.stitle, renamed[seqid] ]
                         else:
                             try:
                                 drec = diamond_recs[seqid]
-                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  drec.hit, drec.evalue, "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None,
+                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  drec.hit, drec.evalue, ref_labels[drec.hit],
+                                          "%.2f" % drec.percid, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None,
                                           frec.stitle, renamed[seqid] ]
                             except:
-                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle, renamed[seqid] ]
+                                fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  None, None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle, renamed[seqid] ]
                     else:
                         frec = fardb_recs.get(seqid,None) or StructObject(hit=None, evalue=None, percid=None, stitle=None)
-                        fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER', '*', None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
+                        fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER', '*', None, None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
                     print(*fields, sep='\t', file=out_fh)
             ## Generate output tree including annotations (use Phylotree)
             subprocess.call("python /scripts/ete3_visualizeAllTrees.py {out_dirn} {annots_fn} {clades_fn}".format(out_dirn=args.out_dirn, annots_fn=args.annots_fn, clades_fn=args.clades_fn), shell=True)
