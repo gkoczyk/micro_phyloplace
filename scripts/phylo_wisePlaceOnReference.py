@@ -212,11 +212,42 @@ def translateExons(seq, exons):
 
 if __name__=='__main__':
     args = argparser.parse_args()
-    args.out_dirn = os.path.join('/current', args.out_dirn) 
-    if args.clades_fn:
+    args.out_dirn = os.path.join('/current', args.out_dirn)
+    # Can't use default clades if we get passed custom alignment data (we don't know what's in the tree then)
+    if args.ref_prot_ali_fn!=argparser.get_default('ref_prot_ali_fn') and args.clades_fn==argparser.get_default('clades_fn'):
+        args.clades_fn = None
+        clade_data = {}
+    # Default
+    elif args.clades_fn:
         clade_data = {rec.clade_name:rec for rec in  parseTsvList(args.clades_fn) }
     else:
         clade_data = {}
+
+    # Check if first line of protein reference alignment has space - if it does inform about removal of descriptions
+    overwrite=False
+    with open(args.ref_prot_ali_fn, 'r') as rfh:
+        for line in rfh:
+            if ' ' in line or '\t' in line:
+                overwrite=True
+                print("Overwriting your alignment file with version containing only sequence IDs, alignment file cannot contain descriptions. You original file will be preserved with '.bak' extension")
+                break
+    if overwrite:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
+            with open(args.ref_prot_ali_fn, 'r') as rfh:
+                for line in rfh:
+                    # Modify the line as needed (e.g., remove spaces)
+                    fields = line.replace('> ','>').split()
+                    if fields[0]=='>':
+                        modified_line=fields[0]+fields[1]
+                    else:
+                        modified_line=fields[0]
+                    temp_file.write(modified_line+'\n')  # Write the modified line to the temporary file
+            temp_file.flush()
+            temp_file.close()
+            # Replace the original file with the temporary file
+            shutil.move(args.ref_prot_ali_fn, args.ref_prot_ali_fn+'.bak')
+            shutil.move(temp_file.name, args.ref_prot_ali_fn)
+            
     # If DIAMOND dbs do not exist - initialise
     dmnd_ref_prot_fn = args.ref_prot_ali_fn + '.dmnd'
     if not os.path.exists(dmnd_ref_prot_fn):

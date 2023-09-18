@@ -7,6 +7,8 @@ GTREE_FN = os.path.join(out_dir, 'epa_result.newick')
 ANNOT_FN = sys.argv[2]
 OUTPUT_ANNOTS_FN = os.path.join(out_dir, 'summary.tsv')
 CLADES_FN = sys.argv[3]
+if CLADES_FN=='None':
+    CLADES_FN=None
 WIDTH=283
 
 
@@ -19,8 +21,10 @@ for v in parseTsvList(ANNOT_FN):
 
 #annots = { v.seqid:v for v in parseTsvList(ANNOT_FN) }
 output_annots = {v.amplicon_id: v for v in parseTsvList(OUTPUT_ANNOTS_FN) }
-clades = {v.clade_name:v for v in parseTsvList(CLADES_FN) }
-
+if CLADES_FN:
+    clades = {v.clade_name:v for v in parseTsvList(CLADES_FN) }
+else:
+    clades = {}
 ts = ete3.treeview.TreeStyle()
 ts.scale = 2000 
 ts.show_branch_support=False
@@ -37,8 +41,8 @@ def nodeLayoutFunc(*args, **kwargs):
     #if gtree.get_common_ancestor('colletotrichum_graminicola__gene___GLRG_11770', 'ilyonectria_sp.__estExt_Genewise1.C_7_t50272') in node.get_ancestors():
     #        s['hz_line_color']=s['vt_line_color'] = s['fgcolor'] = 'SaddleBrown'
     if node.is_leaf():        
-        if node.name in annots:
-            annotvs = annots[node.name]
+        if node.name in annots or node.name not in output_annots:
+            annotvs = annots.get(node.name, [ StructObject(label='unannotated', taxon='-', klass='-', order='-', family='-') ] )
             if 11:   
                     colno=1
                     position = default_position
@@ -74,11 +78,12 @@ def nodeLayoutFunc(*args, **kwargs):
             ete3.faces.add_face_to_node(nameFace, node, 1, position=default_position)#), position="aligned")
             #desctxt = "count=%s; length=%s; placement:weight=%s:%s; sprot_hit:perc_ident=%s:%s;" % (annotv.count, annotv.length, annotv.labels, annotv.weights, annotv.fardb_hit_id, 
             #                                                                                          annotv.fardb_percid)
-            desctxt = ("%s sequences; "% annotv.count if annotv.count>1 else '')
-            desctxt += "" + "/".join( '%s(%s)' % (x,y) for x,y in zip(annotv.labels.split(','), str(annotv.weights).split(',')))
-            descFace = ete3.TextFace( " " + desctxt, fsize=30, fgcolor='Red', fstyle='italic')
-            descFace.margin_top=MINOR_SEP
-            descFace.margin_bottom=MAJOR_SEP
+            if annotv is not None:
+                desctxt = ("%s sequences; "% annotv.count if annotv.count>1 else '')
+                desctxt += "" + "/".join( '%s(%s)' % (x,y) for x,y in zip(annotv.labels.split(','), str(annotv.weights).split(',')))
+                descFace = ete3.TextFace( " " + desctxt, fsize=30, fgcolor='Red', fstyle='italic')
+                descFace.margin_top=MINOR_SEP
+                descFace.margin_bottom=MAJOR_SEP
             ete3.faces.add_face_to_node(descFace, node, 1, position=default_position)
             #ete3.faces.add_face_to_node(nameFace, node, 1, position=default_position)
             #s['bgcolor']='Pink'
