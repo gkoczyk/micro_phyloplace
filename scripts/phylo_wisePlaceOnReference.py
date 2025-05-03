@@ -493,7 +493,7 @@ if __name__=='__main__':
                                 fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER_NOCDS', '*',  None, None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle, renamed[seqid] ]
                     else:
                         frec = fardb_recs.get(seqid,None) or StructObject(hit=None, evalue=None, percid=None, stitle=None)
-                        fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER', '*', None, None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle ]
+                        fields = [seqid, all_counts[seqid], all_seqids[seqid], 'OUTLIER', '*', None, None, None, None, frec.hit, frec.evalue, "%.2f" % frec.percid if frec.percid else None, frec.stitle, renamed[seqid] ]
                     print(*fields, sep='\t', file=out_fh)
             ## Generate output tree including annotations (use Phylotree)
             subprocess.call("python /scripts/ete3_visualizeAllTrees.py {out_dirn} {annots_fn} {clades_fn}".format(out_dirn=args.out_dirn, annots_fn=args.annots_fn, clades_fn=args.clades_fn), shell=True)
