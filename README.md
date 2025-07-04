@@ -7,10 +7,12 @@ Additionally, MIBiG data is included as part of the default reference phylogeny/
 # Installation
 
 Have docker installed on your Linux system. Clone the repository. From its main directory, run the build script with:
+```
 docker build ./ -t micro_phyloplace
+```
 
 # Running
-Run the run_phyloplace.sh script with the following minimal arguments:
+Run the ```run_phyloplace.sh``` script with the following minimal arguments:
 - query_fn - input file
 - out_dirn - output directory which will contain: summary file (TSV), FASTA of processed sequences, wise2 prediction results, SVG visualisations of sequences placed into clades of interest (default: macrolactone_ancestral_clade, hr_pks, everything=ALL)
 
